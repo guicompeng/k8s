@@ -10,6 +10,7 @@ spec:
     chart: kube-prometheus-stack
     targetRevision: 52.5.0   # versão estável recente, você pode ajustar
     helm:
+      skipCRDs: true
       values: |
         grafana:
           enabled: true
