@@ -13,6 +13,16 @@ spec:
       values: |
         prometheusOperator:
           installCRDs: true
+        grafana:
+          enabled: false
+        prometheus:
+          enabled: false
+        alertmanager:
+          enabled: false
+        kubeStateMetrics:
+          enabled: false
+        nodeExporter:
+          enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
