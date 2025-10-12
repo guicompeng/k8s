@@ -1,34 +1,35 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kube-prometheus-crds
+  name: kube-prometheus-stack
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
-    targetRevision: 78.2.0
+    targetRevision: 52.5.0   # versão estável recente, você pode ajustar
     helm:
       values: |
-        prometheusOperator:
-          installCRDs: true
         grafana:
-          enabled: false
+          enabled: true
+          service:
+            type: ClusterIP
         prometheus:
-          enabled: false
+          prometheusSpec:
+            serviceMonitorSelectorNilUsesHelmValues: false
         alertmanager:
           enabled: false
         kubeStateMetrics:
-          enabled: false
+          enabled: true
         nodeExporter:
-          enabled: false
+          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
   syncPolicy:
     automated:
-      prune: false
-      selfHeal: false
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
