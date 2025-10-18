@@ -30,7 +30,7 @@ spec:
           enabled: true
           storageClass: "standard" # ajuste para o seu cluster
           accessMode: ReadWriteOnce
-          size: 10Gi
+          size: 4Gi
         externalDatabase:
           enabled: false
         mariadb:
