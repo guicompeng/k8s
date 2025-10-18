@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: magento
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: magento
+  source:
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: magento
+    # Recomendo fixar uma versão testada; ex: "28.0.5" (verificar versão no repo).
+    targetRevision: "28.0.5"
+    helm:
+      # você pode passar um bloco `values` com YAML (substitua conforme necessário)
+      values: |
+        fullnameOverride: magento
+        service:
+          type: ClusterIP
+        ingress:
+          enabled: true
+          hostname: magento.example.com
+          tls: false
+        magentoHost: magento.example.com
+        magentoUsername: admin
+        magentoPassword: null # vamos ler do Secret via extraEnvVarsFromSecret abaixo
+        persistence:
+          enabled: true
+          storageClass: "standard" # ajuste para o seu cluster
+          accessMode: ReadWriteOnce
+          size: 10Gi
+        externalDatabase:
+          enabled: false
+        mariadb:
+          primary:
+            persistence:
+              enabled: true
+              size: 8Gi
+        ## configurações de recursos - ajustar conforme necessidade
+        resources:
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+      # Se preferir usar parâmetros (equivalente a --set) use `parameters:` aqui.
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
