@@ -28,7 +28,7 @@ spec:
         magentoPassword: null # vamos ler do Secret via extraEnvVarsFromSecret abaixo
         persistence:
           enabled: true
-          storageClass: "microk8s-hostpath"
+          storageClass: "microk8s-hostpath-immediate"
           accessMode: ReadWriteOnce
           size: 4Gi
         externalDatabase:
