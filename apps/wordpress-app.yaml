@@ -8,7 +8,8 @@ spec:
   source:
     repoURL: https://charts.bitnami.com/bitnami
     chart: wordpress
-    targetRevision: 20.2.2  # versão estável em 2025
+    # Use uma versão atual compatível — verificado no ArtifactHub
+    targetRevision: 25.0.8  # exemplo de versão recente :contentReference[oaicite:4]{index=4}
     helm:
       values: |
         wordpressUsername: admin
@@ -24,21 +25,16 @@ spec:
             username: bn_wordpress
             password: wordpresspass
             database: bitnami_wordpress
-        metrics:
+        persistence:
           enabled: true
+          size: 4Gi
+        metrics:
+          enabled: true           # ativa o exporter para métricas :contentReference[oaicite:5]{index=5}
           serviceMonitor:
             enabled: true
             namespace: monitoring
             additionalLabels:
               release: kube-prometheus-stack
-          # Configura os exporters
-          prometheusRule:
-            enabled: false
-        ingress:
-          enabled: false
-        persistence:
-          enabled: true
-          size: 10Gi
   destination:
     server: https://kubernetes.default.svc
     namespace: wordpress
