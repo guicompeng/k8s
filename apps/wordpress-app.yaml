@@ -37,6 +37,18 @@ spec:
               enabled: true
               size: 4Gi
 
+          # 👇 Habilita métricas do MariaDB
+          metrics:
+            enabled: true
+            serviceMonitor:
+              enabled: true
+              namespace: monitoring
+              interval: 30s
+              scrapeTimeout: 10s
+              additionalLabels:
+                release: kube-prometheus-stack
+
+        # 👇 Mantém métricas do WordPress se quiser também
         metrics:
           enabled: true
           serviceMonitor:
