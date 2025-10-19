@@ -12,6 +12,11 @@ spec:
     targetRevision: 25.0.8  # exemplo de versão recente :contentReference[oaicite:4]{index=4}
     helm:
       values: |
+        image:
+          registry: registry-1.docker.io
+          repository: bitnamilegacy/wordpress
+          tag: latest
+          digest: ""
         wordpressUsername: admin
         wordpressPassword: admin123
         wordpressEmail: admin@example.com
