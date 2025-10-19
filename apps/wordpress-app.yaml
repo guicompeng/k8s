@@ -6,23 +6,18 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://charts.bitnami.com/bitnami
-    chart: wordpress
-    # Use uma versão atual compatível — verificado no ArtifactHub
-    targetRevision: 25.0.8  # exemplo de versão recente :contentReference[oaicite:4]{index=4}
+    # Novo repositório OCI da Bitnami Charts
+    repoURL: oci://registry-1.docker.io/bitnamicharts/wordpress
+    targetRevision: latest   # usa a tag 'latest', que é a única mantida publicamente
     helm:
       values: |
-        image:
-          registry: registry-1.docker.io
-          repository: bitnamilegacy/wordpress
-          tag: latest
-          digest: ""
         wordpressUsername: admin
         wordpressPassword: admin123
         wordpressEmail: admin@example.com
         wordpressBlogName: "Meu Blog WordPress"
         service:
           type: ClusterIP
+
         mariadb:
           enabled: true
           auth:
@@ -30,16 +25,19 @@ spec:
             username: bn_wordpress
             password: wordpresspass
             database: bitnami_wordpress
+
         persistence:
           enabled: true
-          size: 4Gi
+          size: 4i
+
         metrics:
-          enabled: true           # ativa o exporter para métricas :contentReference[oaicite:5]{index=5}
+          enabled: true
           serviceMonitor:
             enabled: true
             namespace: monitoring
             additionalLabels:
               release: kube-prometheus-stack
+
   destination:
     server: https://kubernetes.default.svc
     namespace: wordpress
