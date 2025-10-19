@@ -23,7 +23,7 @@ spec:
         wordpressBlogName: Meu Blog
 
         metrics:
-          enabled: false
+          enabled: true
 
         persistence:
           enabled: true
