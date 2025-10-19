@@ -6,30 +6,50 @@ metadata:
 spec:
   project: default
   source:
-    # Novo repositório OCI da Bitnami Charts
-    repoURL: oci://registry-1.docker.io/bitnamicharts/wordpress
-    targetRevision: latest   # usa a tag 'latest', que é a única mantida publicamente
+    repoURL: https://charts.helm.sh/stable
+    chart: wordpress
+    targetRevision: 9.1.8
     helm:
       values: |
+        # Configurações do WordPress
         wordpressUsername: admin
-        wordpressPassword: admin123
+        wordpressPassword: secret-password
         wordpressEmail: admin@example.com
-        wordpressBlogName: "Meu Blog WordPress"
-        service:
-          type: ClusterIP
-
+        wordpressFirstName: Admin
+        wordpressLastName: User
+        wordpressBlogName: My Blog
+        
+        # Database MySQL
         mariadb:
           enabled: true
           auth:
-            rootPassword: rootpassword
-            username: bn_wordpress
-            password: wordpresspass
-            database: bitnami_wordpress
-
+            rootPassword: root-password
+            password: wordpress-password
+          primary:
+            persistence:
+              enabled: true
+              size: 8Gi
+        
+        # Configurações de persistência
         persistence:
           enabled: true
-          size: 4i
-
+          size: 10Gi
+          accessMode: ReadWriteOnce
+        
+        # Configurações de serviço
+        service:
+          type: ClusterIP
+          port: 80
+        
+        # Configurações de ingress
+        ingress:
+          enabled: true
+          hostname: wordpress.example.com
+          annotations:
+            kubernetes.io/ingress.class: nginx
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+        
+        # Métricas para Prometheus
         metrics:
           enabled: true
           serviceMonitor:
@@ -37,14 +57,123 @@ spec:
             namespace: monitoring
             additionalLabels:
               release: kube-prometheus-stack
+        
+        # Configuração do container de métricas
+        extraContainers: |
+          - name: wordpress-exporter
+            image: prom/community-templates:wordpress
+            ports:
+            - name: metrics
+              containerPort: 9112
+            env:
+            - name: WP_EXPORTER_PORT
+              value: "9112"
+            - name: WP_EXPORTER_CONFIG
+              value: "/etc/wordpress-exporter/config.yaml"
+            volumeMounts:
+            - name: wordpress-exporter-config
+              mountPath: /etc/wordpress-exporter
+        
+        # ConfigMap para o exporter
+        extraVolumes: |
+          - name: wordpress-exporter-config
+            configMap:
+              name: wordpress-exporter-config
+        
+        # Configuração do ServiceMonitor
+        serviceAccount:
+          create: true
+        
+        # Annotations para descoberta do Prometheus
+        podAnnotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "9112"
+          prometheus.io/path: "/metrics"
+        
+        # Recursos
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        # Configuração do Service para métricas
+        extraServices: |
+          - apiVersion: v1
+            kind: Service
+            metadata:
+              name: wordpress-metrics
+              labels:
+                app: wordpress
+                app.kubernetes.io/name: wordpress-metrics
+              annotations:
+                prometheus.io/scrape: "true"
+                prometheus.io/port: "9112"
+                prometheus.io/path: "/metrics"
+            spec:
+              ports:
+                - name: metrics
+                  port: 9112
+                  targetPort: 9112
+              selector:
+                app: wordpress
 
   destination:
     server: https://kubernetes.default.svc
     namespace: wordpress
+
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
+    - CreateNamespace=true
+---
+# ConfigMap para o exporter de métricas do WordPress
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-exporter-config
+  namespace: wordpress
+data:
+  config.yaml: |
+    wordpress:
+      url: http://localhost:80
+      username: admin
+      password: secret-password
+    metrics:
+      - name: wordpress_users_total
+        help: Total number of WordPress users
+        type: gauge
+        query: |
+          SELECT COUNT(*) FROM wp_users
+      - name: wordpress_posts_total
+        help: Total number of WordPress posts
+        type: gauge
+        query: |
+          SELECT COUNT(*) FROM wp_posts WHERE post_type = 'post' AND post_status = 'publish'
+      - name: wordpress_comments_total
+        help: Total number of WordPress comments
+        type: gauge
+        query: |
+          SELECT COUNT(*) FROM wp_comments WHERE comment_approved = '1'
+---
+# ServiceMonitor para o Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wordpress
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: wordpress-metrics
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
