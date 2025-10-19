@@ -22,6 +22,9 @@ spec:
         wordpressLastName: User
         wordpressBlogName: Meu Blog
 
+        metrics:
+          enabled: false
+
         persistence:
           enabled: true
           size: 4Gi
