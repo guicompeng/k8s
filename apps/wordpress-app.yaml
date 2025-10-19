@@ -7,38 +7,38 @@ spec:
   project: default
 
   source:
-    repoURL: https://charts.wordpress.org/
+    repoURL: https://charts.bitnami.com/bitnami
     chart: wordpress
-    targetRevision: 16.0.0 # verifique versão estável no repositório
+    targetRevision: 27.0.10
     helm:
       values: |
         service:
           type: ClusterIP
+
         wordpressUsername: admin
         wordpressPassword: changeme
         wordpressEmail: admin@example.com
         wordpressFirstName: Admin
         wordpressLastName: User
         wordpressBlogName: Meu Blog
+
         persistence:
           enabled: true
-          size: 8Gi
+          size: 4i
+
         mariadb:
           enabled: true
           architecture: standalone
+          auth:
+            rootPassword: rootpassword
+            password: wordpresspassword
           primary:
             persistence:
               enabled: true
-              size: 8Gi
+              size: 4Gi
 
-        # Exposição de métricas via sidecar + ServiceMonitor
         metrics:
           enabled: true
-          image:
-            repository: ghcr.io/prometheuscommunity/wordpress-exporter
-            tag: latest
-          port: 9117
-          path: /metrics
           serviceMonitor:
             enabled: true
             namespace: monitoring
