@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wordpress
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: wordpress
+    targetRevision: 20.2.2  # versão estável em 2025
+    helm:
+      values: |
+        wordpressUsername: admin
+        wordpressPassword: admin123
+        wordpressEmail: admin@example.com
+        wordpressBlogName: "Meu Blog WordPress"
+        service:
+          type: ClusterIP
+        mariadb:
+          enabled: true
+          auth:
+            rootPassword: rootpassword
+            username: bn_wordpress
+            password: wordpresspass
+            database: bitnami_wordpress
+        metrics:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+            namespace: monitoring
+            additionalLabels:
+              release: kube-prometheus-stack
+          # Configura os exporters
+          prometheusRule:
+            enabled: false
+        ingress:
+          enabled: false
+        persistence:
+          enabled: true
+          size: 10Gi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: wordpress
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
