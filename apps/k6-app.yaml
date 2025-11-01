@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k6-load-testing
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://k6io/k6-helm-chart
+    chart: k6
+    targetRevision: 0.1.0
+    helm:
+      values: |
+        image:
+          tag: latest
+        service:
+          enabled: true
+          type: NodePort
+          nodePort: 30083
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: k6
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
