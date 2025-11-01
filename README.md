@@ -36,7 +36,7 @@ kubectl apply -f https://raw.githubusercontent.com/guicompeng/k8s/main/root-app.
 **Load Testing**: Os testes de carga estão definidos no arquivo `load-tests/wordpress-load-tests.js`. Para executar:
 
 ```bash
-$ k6 run k6/scripts/wordpress-load-tests.js
+$ k6 run load-tests/wordpress-load-tests.js
 ```
 
 ## Cenários de Teste de Carga
