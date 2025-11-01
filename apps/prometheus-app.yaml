@@ -14,7 +14,8 @@ spec:
         grafana:
           enabled: true
           service:
-            type: ClusterIP
+            type: NodePort
+            nodePort: 30081
           datasources:
             datasources.yaml:
               apiVersion: 1
@@ -27,7 +28,7 @@ spec:
         prometheus:
           service:
             type: NodePort
-            nodePort: 30090
+            nodePort: 30082
           prometheusSpec:
             serviceMonitorSelectorNilUsesHelmValues: false
             storageSpec:
