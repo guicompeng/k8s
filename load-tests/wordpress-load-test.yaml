@@ -1,0 +1,12 @@
+apiVersion: k6.io/v1alpha1
+kind: K6
+metadata:
+  name: wordpress-resilience-test
+  namespace: k6-operator
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: wordpress-test-script
+      file: test.js
+  arguments: "--vus 20 --duration 1m"
