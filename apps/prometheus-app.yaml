@@ -25,6 +25,9 @@ spec:
                   access: proxy
                   isDefault: true
         prometheus:
+          service:
+            type: NodePort
+            nodePort: 30090
           prometheusSpec:
             serviceMonitorSelectorNilUsesHelmValues: false
             storageSpec:
