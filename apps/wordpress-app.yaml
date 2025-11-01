@@ -13,7 +13,10 @@ spec:
     helm:
       values: |
         service:
-          type: ClusterIP
+          type: NodePort
+          nodePorts:
+            http: 30080
+            https: 30443
 
         wordpressUsername: admin
         wordpressPassword: changeme
