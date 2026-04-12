@@ -5,7 +5,7 @@ const readline = require('readline');
 
 const inputPath = process.argv[2] || 'dataset-1m.csv';
 const outputPath = process.argv[3] || 'dataset-1m-relabel.csv';
-const lookback = 6;
+const lookback = 18;
 
 if (!fs.existsSync(inputPath)) {
 	console.error(`Arquivo nao encontrado: ${inputPath}`);
