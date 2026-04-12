@@ -4,8 +4,8 @@ const path = require('path');
 
 const TARGET = 'http://10.187.36.245:30080/sample-page/';
 const OUT = path.join(__dirname, 'rotulos.csv');
-const INTERVAL_MS = 1000;
-const HEALTHY_THRESHOLD_MS = 3000;
+const INTERVAL_MS = 10000;
+const HEALTHY_THRESHOLD_MS = 5000;
 
 // garante cabeçalho
 if (!fs.existsSync(OUT) || fs.statSync(OUT).size === 0) {
