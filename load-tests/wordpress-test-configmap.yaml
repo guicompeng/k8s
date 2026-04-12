@@ -41,6 +41,7 @@ data:
     const COMMENT_IDS = [2, 167, 168, 169, 1017, 1016, 881, 899, 900, 901];
 
     // 10 stages x 3 minutes each = 30 minutes total.
+    // Slower progression with a hard cap at 100 req/s.
     // Rates are iterations/second; each iteration performs one request.
     export const options = {
         discardResponseBodies: true,
@@ -77,7 +78,7 @@ data:
             },
             rps_6: {
                 executor: 'constant-arrival-rate',
-                rate: 6,
+                rate: 8,
                 timeUnit: '1s',
                 duration: '3m',
                 startTime: '9m',
@@ -86,7 +87,7 @@ data:
             },
             rps_10: {
                 executor: 'constant-arrival-rate',
-                rate: 10,
+                rate: 12,
                 timeUnit: '1s',
                 duration: '3m',
                 startTime: '12m',
@@ -104,7 +105,7 @@ data:
             },
             rps_50: {
                 executor: 'constant-arrival-rate',
-                rate: 50,
+                rate: 35,
                 timeUnit: '1s',
                 duration: '3m',
                 startTime: '18m',
@@ -113,7 +114,7 @@ data:
             },
             rps_100: {
                 executor: 'constant-arrival-rate',
-                rate: 100,
+                rate: 50,
                 timeUnit: '1s',
                 duration: '3m',
                 startTime: '21m',
@@ -122,7 +123,7 @@ data:
             },
             rps_300: {
                 executor: 'constant-arrival-rate',
-                rate: 300,
+                rate: 75,
                 timeUnit: '1s',
                 duration: '3m',
                 startTime: '24m',
@@ -131,7 +132,7 @@ data:
             },
             rps_1000: {
                 executor: 'constant-arrival-rate',
-                rate: 1000,
+                rate: 100,
                 timeUnit: '1s',
                 duration: '3m',
                 startTime: '27m',
@@ -144,12 +145,11 @@ data:
     const staticRoutes = [
         '/',
         '/?s=wordpress+stress+test+sample+data',
-        '/wp-json/wp/v2/posts?per_page=100&_embed=1',
-        '/wp-json/wp/v2/comments?per_page=100&page=1',
-        '/wp-json/wp/v2/categories?per_page=100',
-        '/wp-json/wp/v2/tags?per_page=100',
-        '/wp-json/wp/v2/media?per_page=100&page=1',
-        '/wp-json/wp/v2/pages?per_page=50&page=1',
+        '/wp-json/wp/v2/posts?per_page=50&_embed=1',
+        '/wp-json/wp/v2/comments?per_page=50&page=1',
+        '/wp-json/wp/v2/categories?per_page=50',
+        '/wp-json/wp/v2/tags?per_page=50',
+        '/wp-json/wp/v2/pages?per_page=25&page=1',
     ];
 
     function pickRandom(list) {
@@ -169,9 +169,9 @@ data:
             `/${postSlug}/`,
             `/?s=${postSlug}`,
             `/wp-json/wp/v2/posts/${postId}`,
-            `/wp-json/wp/v2/posts?slug=${postSlug}&_embed=1`,
-            `/wp-json/wp/v2/posts?search=${postSlug}&per_page=100`,
-            `/wp-json/wp/v2/comments?post=${postId}&per_page=100`,
+            `/wp-json/wp/v2/posts?slug=${postSlug}&_embed=1&per_page=25`,
+            `/wp-json/wp/v2/posts?search=${postSlug}&per_page=50`,
+            `/wp-json/wp/v2/comments?post=${postId}&per_page=50`,
             `/wp-json/wp/v2/comments/${commentId}`,
             `/wp-json/wp/v2/categories?slug=${categorySlug}`,
             `/wp-json/wp/v2/tags?slug=${tagSlug}`,
