@@ -1,81 +1,201 @@
-import requests
-import csv
-import datetime
-from datetime import timedelta
+#!/usr/bin/env python3
 
-# Configurações
-prometheus_url = "http://10.187.36.245:30082/api/v1/query_range"
-metricas = [
-    "node_cpu_seconds_total",
-    "node_memory_MemAvailable_bytes",
-    "node_load1",
-    "node_network_receive_bytes_total"
+"""Scrape selected Prometheus metrics and export them as CSV.
+
+The default queries are tuned for the WordPress + MariaDB stack defined in this
+repository. Output format:
+
+timestamp,metric_1,metric_2,...
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import sys
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Iterable, List, Tuple
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
+
+
+DEFAULT_QUERY_URL = "http://10.187.36.245:30082/api/v1/query_range"
+
+
+@dataclass(frozen=True)
+class MetricQuery:
+	alias: str
+	query: str
+
+
+DEFAULT_METRICS: List[MetricQuery] = [
+	# WordPress latency and traffic quality.
+	MetricQuery("wordpress_apache_up", "max(apache_up)"),
+	MetricQuery("wordpress_http_rps", "sum(rate(apache_accesses_total[2m]))"),
+	MetricQuery(
+		"wordpress_http_avg_response_seconds",
+		"sum(rate(apache_duration_ms_total[2m])) / clamp_min(sum(rate(apache_accesses_total[2m])), 0.001) / 1000",
+	),
+	MetricQuery(
+		"wordpress_http_avg_response_over_2s",
+		"(sum(rate(apache_duration_ms_total[2m])) / clamp_min(sum(rate(apache_accesses_total[2m])), 0.001) / 1000) > bool 2",
+	),
+	MetricQuery("wordpress_apache_cpuload", "avg(apache_cpuload)"),
+	MetricQuery("wordpress_apache_workers_busy", 'sum(apache_workers{state="busy"})'),
+	MetricQuery("wordpress_apache_workers_idle", 'sum(apache_workers{state="idle"})'),
+	MetricQuery("wordpress_apache_workers_reply", 'sum(apache_scoreboard{state="reply"})'),
+	MetricQuery("wordpress_process_cpu_rate", "sum(rate(process_cpu_seconds_total[5m]))"),
+	MetricQuery("wordpress_process_resident_memory_bytes", "avg(process_resident_memory_bytes)"),
+	MetricQuery("wordpress_process_open_fds", "avg(process_open_fds)"),
+
+	# MariaDB stress indicators that often correlate with slow responses.
+	MetricQuery("mariadb_uptime_seconds", "max(mysql_global_status_uptime)"),
+	MetricQuery("mariadb_threads_connected", "max(mysql_global_status_threads_connected)"),
+	MetricQuery("mariadb_threads_running", "max(mysql_global_status_threads_running)"),
+	MetricQuery("mariadb_questions_rate", "sum(rate(mysql_global_status_questions[2m]))"),
+	MetricQuery("mariadb_slow_queries_rate", "sum(rate(mysql_global_status_slow_queries[5m]))"),
+	MetricQuery("mariadb_aborted_connects_rate", "sum(rate(mysql_global_status_aborted_connects[5m]))"),
+	MetricQuery("mariadb_innodb_row_lock_time_rate", "sum(rate(mysql_global_status_innodb_row_lock_time[5m]))"),
+	MetricQuery("mariadb_bytes_received_rate", "sum(rate(mysql_global_status_bytes_received[5m]))"),
+	MetricQuery("mariadb_bytes_sent_rate", "sum(rate(mysql_global_status_bytes_sent[5m]))"),
+
+	# Kubernetes health around the WordPress namespace.
+	MetricQuery(
+		"k8s_wordpress_container_restarts_rate",
+		'sum(rate(kube_pod_container_status_restarts_total{namespace="wordpress"}[5m]))',
+	),
+	MetricQuery(
+		"k8s_wordpress_unready_containers",
+		'sum(kube_pod_container_status_ready{namespace="wordpress"} == 0)',
+	),
+	MetricQuery(
+		"k8s_wordpress_non_running_pods",
+		'sum(kube_pod_status_phase{namespace="wordpress",phase=~"Pending|Failed|Unknown"})',
+	),
+	MetricQuery(
+		"k8s_wordpress_cpu_throttled_seconds_rate",
+		'sum(rate(container_cpu_cfs_throttled_seconds_total{namespace="wordpress",container!=""}[5m]))',
+	),
+	MetricQuery(
+		"k8s_wordpress_container_cpu_usage_cores",
+		'sum(rate(container_cpu_usage_seconds_total{namespace="wordpress",container!=""}[5m]))',
+	),
+	MetricQuery(
+		"k8s_wordpress_container_memory_working_set_bytes",
+		'sum(container_memory_working_set_bytes{namespace="wordpress",container!=""})',
+	),
 ]
 
-# Intervalo desejado (pode ser grande)
-params_base = {
-    "start": "2025-10-10T00:00:00Z",
-    "end": "2025-10-26T18:00:00Z",
-    "step": "15s"
-}
 
-# Tamanho máximo de cada fatia (em horas)
-FATIA_HORAS = 2  # ajuste conforme necessidade (2h = seguro p/ 15s step)
+def normalize_query_range_url(value: str) -> str:
+	parsed = urlparse(value)
+	if parsed.path.endswith("/api/v1/query_range"):
+		return value
+	return value.rstrip("/") + "/api/v1/query_range"
 
-def iso_to_datetime(iso_str):
-    return datetime.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
 
-def datetime_to_iso(dt):
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+def parse_time_argument(value: str) -> float:
+	try:
+		return float(value)
+	except ValueError:
+		parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+		if parsed.tzinfo is None:
+			parsed = parsed.replace(tzinfo=timezone.utc)
+		return parsed.timestamp()
 
-start_dt = iso_to_datetime(params_base["start"])
-end_dt = iso_to_datetime(params_base["end"])
 
-dados_metricas = {m: {} for m in metricas}
+def utc_timestamp(value: float) -> str:
+	return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
 
-# Quebrar em fatias e buscar cada uma
-fatias = []
-t = start_dt
-while t < end_dt:
-    t_fim = min(t + timedelta(hours=FATIA_HORAS), end_dt)
-    fatias.append((t, t_fim))
-    t = t_fim
 
-print(f"📆 Consultando em {len(fatias)} fatias de {FATIA_HORAS}h...")
+def fetch_query_range(url: str, query: str, start: float, end: float, step: str, timeout: int) -> Dict[str, object]:
+	params = urlencode(
+		{
+			"query": query,
+			"start": f"{start:.3f}",
+			"end": f"{end:.3f}",
+			"step": step,
+		}
+	)
+	request = Request(f"{url}?{params}", headers={"Accept": "application/json"})
 
-for metrica in metricas:
-    print(f"🔍 Baixando {metrica}...")
-    for (inicio, fim) in fatias:
-        params = {
-            "query": metrica,
-            "start": datetime_to_iso(inicio),
-            "end": datetime_to_iso(fim),
-            "step": params_base["step"]
-        }
-        resp = requests.get(prometheus_url, params=params).json()
+	try:
+		with urlopen(request, timeout=timeout) as response:
+			payload = json.load(response)
+	except HTTPError as exc:
+		raise RuntimeError(f"Prometheus returned HTTP {exc.code} for query: {query}") from exc
+	except URLError as exc:
+		raise RuntimeError(f"Could not reach Prometheus at {url}: {exc.reason}") from exc
 
-        if resp.get("status") != "success" or not resp["data"]["result"]:
-            print(f"⚠️ Erro ou sem dados: {metrica} ({inicio} -> {fim})")
-            continue
+	status = payload.get("status")
+	if status != "success":
+		error_type = payload.get("errorType", "unknown")
+		error_message = payload.get("error", "unknown error")
+		raise RuntimeError(f"Prometheus query failed ({error_type}): {error_message}")
 
-        # Pode haver várias séries; use a primeira ou combine se quiser
-        for serie in resp["data"]["result"]:
-            for ts, val in serie["values"]:
-                dados_metricas[metrica][float(ts)] = float(val)
+	data = payload.get("data", {})
+	result = data.get("result", [])
+	return result[0] if result else {"values": []}
 
-# Construir tabela combinada
-todos_tempos = sorted(set().union(*[d.keys() for d in dados_metricas.values()]))
-csv_file = "dados_prometheus.csv"
 
-with open(csv_file, "w", newline="") as f:
-    writer = csv.writer(f, delimiter=';')
-    header = ["tempo"] + metricas
-    writer.writerow(header)
+def collect_series(url: str, metrics: Iterable[MetricQuery], start: float, end: float, step: str, timeout: int) -> Tuple[List[str], Dict[str, Dict[str, str]]]:
+	rows: Dict[str, Dict[str, str]] = defaultdict(dict)
+	column_names: List[str] = ["timestamp"]
 
-    for t in todos_tempos:
-        linha = [datetime.datetime.utcfromtimestamp(t).isoformat()]
-        for m in metricas:
-            linha.append(dados_metricas[m].get(t, ""))
-        writer.writerow(linha)
+	for metric in metrics:
+		column_names.append(metric.alias)
+		series = fetch_query_range(url, metric.query, start, end, step, timeout)
+		for timestamp, value in series.get("values", []):
+			rows[utc_timestamp(float(timestamp))][metric.alias] = value
 
-print(f"✅ Exportado para {csv_file}")
+	return column_names, rows
+
+
+def write_csv(columns: List[str], rows: Dict[str, Dict[str, str]], output_handle) -> None:
+	writer = csv.DictWriter(output_handle, fieldnames=columns)
+	writer.writeheader()
+	for timestamp in sorted(rows.keys()):
+		record = {column: rows[timestamp].get(column, "") for column in columns}
+		record["timestamp"] = timestamp
+		writer.writerow(record)
+
+
+def build_argument_parser() -> argparse.ArgumentParser:
+	parser = argparse.ArgumentParser(description="Scrape Prometheus metrics and export CSV.")
+	parser.add_argument("--url", default=DEFAULT_QUERY_URL, help="Prometheus query_range endpoint.")
+	parser.add_argument("--start", help="Start time in epoch seconds or ISO-8601. Defaults to now - minutes.")
+	parser.add_argument("--end", help="End time in epoch seconds or ISO-8601. Defaults to now.")
+	parser.add_argument("--minutes", type=int, default=300, help="Window size when start/end are not provided.")
+	parser.add_argument("--step", default="30s", help="Prometheus step, for example 15s, 30s, 1m.")
+	parser.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds.")
+	parser.add_argument("--output", default="metrics.csv", help="Write CSV to this file. Use - for stdout.")
+	return parser
+
+
+def main() -> int:
+	parser = build_argument_parser()
+	args = parser.parse_args()
+
+	end = parse_time_argument(args.end) if args.end else datetime.now(timezone.utc).timestamp()
+	start = parse_time_argument(args.start) if args.start else end - timedelta(minutes=args.minutes).total_seconds()
+	if start > end:
+		parser.error("start must be less than or equal to end")
+
+	query_url = normalize_query_range_url(args.url)
+	columns, rows = collect_series(query_url, DEFAULT_METRICS, start, end, args.step, args.timeout)
+
+	if args.output == "-":
+		write_csv(columns, rows, sys.stdout)
+	else:
+		with open(args.output, "w", newline="", encoding="utf-8") as handle:
+			write_csv(columns, rows, handle)
+
+	return 0
+
+
+if __name__ == "__main__":
+	raise SystemExit(main())
