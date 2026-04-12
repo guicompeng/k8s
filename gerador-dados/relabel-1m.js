@@ -3,7 +3,7 @@
 const fs = require('fs');
 const readline = require('readline');
 
-const inputPath = process.argv[2] || 'dataset-1m.csv';
+const inputPath = process.argv[2] || 'dataset.csv';
 const outputPath = process.argv[3] || 'dataset-1m-relabel.csv';
 const lookback = 18;
 
