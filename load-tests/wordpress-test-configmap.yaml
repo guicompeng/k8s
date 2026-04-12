@@ -5,38 +5,197 @@ metadata:
   namespace: k6-operator
 data:
   test.js: |
-    // k6 load testing script for WordPress
+    // k6 stress test script for WordPress/MariaDB through public HTTP APIs
     import http from 'k6/http';
-    import { check, sleep } from 'k6';
+    import { check } from 'k6';
 
-    // Configuration for load tests
+    const BASE_URL = __ENV.BASE_URL || 'http://10.187.36.245:30080';
+    const POST_IDS = [163, 150, 51, 34, 24, 21, 8, 1724, 2, 146, 155, 156];
+    const POST_SLUGS = [
+        'about',
+        'lorem-ipsum',
+        'page-with-comments',
+        'page-with-comments-disabled',
+        'level-3',
+        'level-2',
+        'level-1',
+        'clearing-floats',
+        'front-page',
+        'blog',
+    ];
+    const CATEGORY_SLUGS = ['6-1', 'block', 'classic', 'post-formats'];
+    const TAG_SLUGS = [
+        'sample',
+        'tags',
+        'test-tag',
+        'codex',
+        'post-formats',
+        'readability',
+        'gallery',
+        'shortcode',
+        'aside',
+        'chat',
+        'link',
+        'image',
+    ];
+    const COMMENT_IDS = [2, 167, 168, 169, 1017, 1016, 881, 899, 900, 901];
+
+    // 10 stages x 3 minutes each = 30 minutes total.
+    // Rates are iterations/second; each iteration performs one request.
     export const options = {
-        stages: [
-            { duration: '5m', target: 50 }, // Ramp-up to 50 users
-            { duration: '10m', target: 50 }, // Stay at 50 users
-            { duration: '5m', target: 0 }, // Ramp-down to 0 users
-        ],
+        discardResponseBodies: true,
+        thresholds: {
+            http_req_failed: ['rate<0.20'],
+            http_req_duration: ['p(95)<5000', 'p(99)<10000'],
+        },
+        scenarios: {
+            rps_1: {
+                executor: 'constant-arrival-rate',
+                rate: 1,
+                timeUnit: '1s',
+                duration: '3m',
+                preAllocatedVUs: 20,
+                maxVUs: 200,
+            },
+            rps_2: {
+                executor: 'constant-arrival-rate',
+                rate: 2,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '3m',
+                preAllocatedVUs: 20,
+                maxVUs: 200,
+            },
+            rps_4: {
+                executor: 'constant-arrival-rate',
+                rate: 4,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '6m',
+                preAllocatedVUs: 30,
+                maxVUs: 250,
+            },
+            rps_6: {
+                executor: 'constant-arrival-rate',
+                rate: 6,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '9m',
+                preAllocatedVUs: 40,
+                maxVUs: 300,
+            },
+            rps_10: {
+                executor: 'constant-arrival-rate',
+                rate: 10,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '12m',
+                preAllocatedVUs: 60,
+                maxVUs: 400,
+            },
+            rps_20: {
+                executor: 'constant-arrival-rate',
+                rate: 20,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '15m',
+                preAllocatedVUs: 100,
+                maxVUs: 500,
+            },
+            rps_50: {
+                executor: 'constant-arrival-rate',
+                rate: 50,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '18m',
+                preAllocatedVUs: 150,
+                maxVUs: 700,
+            },
+            rps_100: {
+                executor: 'constant-arrival-rate',
+                rate: 100,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '21m',
+                preAllocatedVUs: 250,
+                maxVUs: 1000,
+            },
+            rps_300: {
+                executor: 'constant-arrival-rate',
+                rate: 300,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '24m',
+                preAllocatedVUs: 500,
+                maxVUs: 1600,
+            },
+            rps_1000: {
+                executor: 'constant-arrival-rate',
+                rate: 1000,
+                timeUnit: '1s',
+                duration: '3m',
+                startTime: '27m',
+                preAllocatedVUs: 1000,
+                maxVUs: 3000,
+            },
+        },
     };
 
-    // Basic Load Test: Simulates users accessing the WordPress homepage
+    const staticRoutes = [
+        '/',
+        '/?s=wordpress+stress+test+sample+data',
+        '/wp-json/wp/v2/posts?per_page=100&_embed=1',
+        '/wp-json/wp/v2/comments?per_page=100&page=1',
+        '/wp-json/wp/v2/categories?per_page=100',
+        '/wp-json/wp/v2/tags?per_page=100',
+        '/wp-json/wp/v2/media?per_page=100&page=1',
+        '/wp-json/wp/v2/pages?per_page=50&page=1',
+    ];
+
+    function pickRandom(list) {
+        const idx = Math.floor(Math.random() * list.length);
+        return list[idx];
+    }
+
+    function buildDynamicRoutes() {
+        const postId = pickRandom(POST_IDS);
+        const postSlug = pickRandom(POST_SLUGS);
+        const categorySlug = pickRandom(CATEGORY_SLUGS);
+        const tagSlug = pickRandom(TAG_SLUGS);
+        const commentId = pickRandom(COMMENT_IDS);
+
+        return [
+            `/?p=${postId}`,
+            `/${postSlug}/`,
+            `/?s=${postSlug}`,
+            `/wp-json/wp/v2/posts/${postId}`,
+            `/wp-json/wp/v2/posts?slug=${postSlug}&_embed=1`,
+            `/wp-json/wp/v2/posts?search=${postSlug}&per_page=100`,
+            `/wp-json/wp/v2/comments?post=${postId}&per_page=100`,
+            `/wp-json/wp/v2/comments/${commentId}`,
+            `/wp-json/wp/v2/categories?slug=${categorySlug}`,
+            `/wp-json/wp/v2/tags?slug=${tagSlug}`,
+        ];
+    }
+
+    function pickRandomRoute() {
+        const routes = staticRoutes.concat(buildDynamicRoutes());
+        return pickRandom(routes);
+    }
+
     export default function () {
-        // Basic Load Test
-        let res = http.get('http://10.187.36.245:30080/');
-        check(res, {
-            'homepage status is 200': (r) => r.status === 200,
+        const path = pickRandomRoute();
+        const res = http.get(`${BASE_URL}${path}`, {
+            headers: {
+                'Cache-Control': 'no-cache',
+            },
+            tags: {
+                endpoint: path,
+            },
         });
 
-        // API Load Test: Tests the performance of the WordPress REST API
-        res = http.get('http://10.187.36.245:30080/wp-json/wp/v2/posts');
         check(res, {
-            'API status is 200': (r) => r.status === 200,
+            'status below 500': (r) => r.status < 500,
+            'response time < 10s': (r) => r.timings.duration < 10000,
         });
-
-        // Database Load Test: Simulates interactions that involve database queries
-        res = http.get('http://10.187.36.245:30080/wp-json/wp/v2/comments');
-        check(res, {
-            'Comments API status is 200': (r) => r.status === 200,
-        });
-
-        sleep(1); // Wait for 1 second before the next iteration
     }
