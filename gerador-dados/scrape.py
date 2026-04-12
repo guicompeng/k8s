@@ -271,8 +271,8 @@ def build_argument_parser():
     parser.add_argument("--start")
     parser.add_argument("--end")
     parser.add_argument("--minutes", type=int, default=300)
-    parser.add_argument("--step", default="30s")
-    parser.add_argument("--timeout", type=int, default=30)
+    parser.add_argument("--step", default="10s")
+    parser.add_argument("--timeout", type=int, default=10)
     parser.add_argument("--output", default="metrics.csv")
     return parser
 
