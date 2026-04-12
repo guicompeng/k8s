@@ -31,6 +31,13 @@ spec:
         persistence:
           enabled: true
           size: 4Gi
+        resources:
+          requests:
+            cpu: 350m
+            memory: 700Mi
+          limits:
+            cpu: 700m
+            memory: 1.5Gi
 
         mariadb:
           enabled: true
