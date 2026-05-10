@@ -4,10 +4,12 @@ import argparse
 import json
 import random
 from pathlib import Path
+import sys # Import sys to access sys.argv
 
 import joblib
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt # Added for plotting
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils.class_weight import compute_class_weight
@@ -19,12 +21,13 @@ except ImportError as exc:
 
 
 def parse_args() -> argparse.Namespace:
-	default_data = Path(__file__).resolve().parent / "dataset.csv"
+	# In a Colab environment, __file__ is not defined. We'll use a direct path.
+	default_data = Path("/content/dataset.csv") # Corrected path for Colab
 	parser = argparse.ArgumentParser(description="Train LSTM on time-series metrics")
 	parser.add_argument("--data-path", type=Path, default=default_data)
 	parser.add_argument("--target-col", type=str, default="target")
 	parser.add_argument("--time-col", type=str, default="timestamp")
-	parser.add_argument("--seq-len", type=int, default=18)
+	parser.add_argument("--seq-len", type=int, default=6)
 	parser.add_argument("--stride", type=int, default=1)
 	parser.add_argument("--train-ratio", type=float, default=0.7)
 	parser.add_argument("--val-ratio", type=float, default=0.15)
@@ -34,7 +37,8 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--seed", type=int, default=42)
 	parser.add_argument("--threshold", type=float, default=None)
 	parser.add_argument("--output-dir", type=Path, default=Path("lstm_artifacts"))
-	return parser.parse_args()
+
+	return parser.parse_args(args=[])
 
 
 def set_seed(seed: int) -> None:
@@ -159,7 +163,7 @@ def build_model(seq_len: int, n_features: int) -> tf.keras.Model:
 	x = tf.keras.layers.Dropout(0.2)(x)
 	x = tf.keras.layers.LSTM(32)(x)
 	x = tf.keras.layers.Dropout(0.2)(x)
-	x = tf.keras.layers.Dense(32, activation="relu")
+	x = tf.keras.layers.Dense(32, activation="relu")(x)
 	x = tf.keras.layers.Dropout(0.2)(x)
 	outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 	model = tf.keras.Model(inputs, outputs)
@@ -195,6 +199,55 @@ def compute_metrics(y_true: np.ndarray, probs: np.ndarray, threshold: float) -> 
 		metrics["roc_auc"] = None
 	return metrics
 
+def plot_training_history(history):
+    history_dict = history.history
+    epochs = range(1, len(history_dict['loss']) + 1)
+
+    plt.figure(figsize=(15, 10))
+
+    # Plot Loss
+    plt.subplot(2, 2, 1)
+    plt.plot(epochs, history_dict['loss'], 'bo-', label='Training loss')
+    if 'val_loss' in history_dict:
+        plt.plot(epochs, history_dict['val_loss'], 'ro-', label='Validation loss')
+    plt.title('Training and Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # Plot Accuracy
+    plt.subplot(2, 2, 2)
+    if 'acc' in history_dict:
+        plt.plot(epochs, history_dict['acc'], 'bo-', label='Training Accuracy')
+    if 'val_acc' in history_dict:
+        plt.plot(epochs, history_dict['val_acc'], 'ro-', label='Validation Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    # Plot AUC
+    plt.subplot(2, 2, 3)
+    if 'auc' in history_dict:
+        plt.plot(epochs, history_dict['auc'], 'bo-', label='Training AUC')
+    if 'val_auc' in history_dict:
+        plt.plot(epochs, history_dict['val_auc'], 'ro-', label='Validation AUC')
+    plt.title('Training and Validation AUC')
+    plt.xlabel('Epochs')
+    plt.ylabel('AUC')
+    plt.legend()
+
+    # Plot Learning Rate
+    if 'lr' in history_dict:
+        plt.subplot(2, 2, 4)
+        plt.plot(epochs, history_dict['lr'], 'go-', label='Learning Rate')
+        plt.title('Learning Rate')
+        plt.xlabel('Epochs')
+        plt.ylabel('LR')
+        plt.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 def main() -> None:
 	args = parse_args()
@@ -252,7 +305,7 @@ def main() -> None:
 		),
 	]
 
-	model.fit(
+	history = model.fit( # Capture the history object
 		train_ds,
 		validation_data=val_ds,
 		epochs=args.epochs,
@@ -260,6 +313,8 @@ def main() -> None:
 		callbacks=callbacks,
 		verbose=1,
 	)
+
+	plot_training_history(history) # Call the plotting function
 
 	val_probs = model.predict(val_ds, verbose=0).reshape(-1)
 	if args.threshold is None:
